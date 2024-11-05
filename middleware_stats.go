@@ -1,37 +1,39 @@
 package workers
 
 import (
+	"context"
 	"time"
 )
 
 type MiddlewareStats struct{}
 
 func (l *MiddlewareStats) Call(queue string, message *Msg, next func() bool) (acknowledge bool) {
+	ctx := context.Background()
+
 	defer func() {
 		if e := recover(); e != nil {
-			incrementStats("failed")
+			incrementStats(ctx, "failed")
 			panic(e)
 		}
 	}()
 
 	acknowledge = next()
 
-	incrementStats("processed")
+	incrementStats(ctx, "processed")
 
 	return
 }
 
-func incrementStats(metric string) {
-	conn := Config.Pool.Get()
-	defer conn.Close()
+func incrementStats(ctx context.Context, metric string) {
+	conn := Config.Client.Instance
 
 	today := time.Now().UTC().Format("2006-01-02")
 
-	conn.Send("multi")
-	conn.Send("incr", Config.Namespace+"stat:"+metric)
-	conn.Send("incr", Config.Namespace+"stat:"+metric+":"+today)
+	pipe := conn.TxPipeline()
+	pipe.Incr(ctx, Config.Namespace+"stat:"+metric)
+	pipe.Incr(ctx, Config.Namespace+"stat:"+metric+":"+today)
 
-	if _, err := conn.Do("exec"); err != nil {
+	if _, err := pipe.Exec(ctx); err != nil {
 		Logger.Errorln("failed to save stats:", err)
 	}
 }

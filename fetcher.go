@@ -1,10 +1,10 @@
 package workers
 
 import (
+	"context"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"time"
-
-	"github.com/gomodule/redigo/redis"
 )
 
 type Fetcher interface {
@@ -44,8 +44,8 @@ func (f *fetch) Queue() string {
 	return f.queue
 }
 
-func (f *fetch) processOldMessages() {
-	messages := f.inprogressMessages()
+func (f *fetch) processOldMessages(ctx context.Context) {
+	messages := f.inprogressMessages(ctx)
 
 	for _, message := range messages {
 		<-f.Ready()
@@ -54,7 +54,8 @@ func (f *fetch) processOldMessages() {
 }
 
 func (f *fetch) Fetch() {
-	f.processOldMessages()
+	ctx := context.Background()
+	f.processOldMessages(ctx)
 
 	go func() {
 		for {
@@ -63,7 +64,7 @@ func (f *fetch) Fetch() {
 				break
 			}
 			<-f.Ready()
-			f.tryFetchMessage()
+			f.tryFetchMessage(ctx)
 		}
 	}()
 
@@ -79,15 +80,13 @@ func (f *fetch) Fetch() {
 	}
 }
 
-func (f *fetch) tryFetchMessage() {
-	conn := Config.Pool.Get()
-	defer conn.Close()
+func (f *fetch) tryFetchMessage(ctx context.Context) {
+	conn := Config.Client.Instance
 
-	message, err := redis.String(conn.Do("brpoplpush", f.queue, f.inprogressQueue(), 1))
-
+	message, err := conn.BLMove(ctx, f.queue, f.inprogressQueue(), "right", "left", 1).Result()
 	if err != nil {
 		// If redis returns null, the queue is empty. Just ignore the error.
-		if err.Error() != "redigo: nil returned" {
+		if err.Error() != redis.Nil.Error() {
 			Logger.Errorln("failed to fetch message", err)
 			time.Sleep(1 * time.Second)
 		}
@@ -108,9 +107,10 @@ func (f *fetch) sendMessage(message string) {
 }
 
 func (f *fetch) Acknowledge(message *Msg) {
-	conn := Config.Pool.Get()
-	defer conn.Close()
-	conn.Do("lrem", f.inprogressQueue(), -1, message.OriginalJson())
+	ctx := context.Background()
+	conn := Config.Client.Instance
+
+	conn.LRem(ctx, f.inprogressQueue(), -1, message.OriginalJson())
 }
 
 func (f *fetch) Messages() chan *Msg {
@@ -139,11 +139,10 @@ func (f *fetch) Closed() bool {
 	}
 }
 
-func (f *fetch) inprogressMessages() []string {
-	conn := Config.Pool.Get()
-	defer conn.Close()
+func (f *fetch) inprogressMessages(ctx context.Context) []string {
+	conn := Config.Client.Instance
 
-	messages, err := redis.Strings(conn.Do("lrange", f.inprogressQueue(), 0, -1))
+	messages, err := conn.LRange(ctx, f.inprogressQueue(), 0, -1).Result()
 	if err != nil {
 		Logger.Errorln("failed to fetch messages in progress", err)
 	}

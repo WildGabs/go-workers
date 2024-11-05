@@ -1,8 +1,10 @@
 package workers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"net/http"
 	"strconv"
 )
@@ -17,10 +19,12 @@ type stats struct {
 
 // Stats writes stats on response writer
 func Stats(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	stats := getStats()
+	stats := getStats(ctx)
 
 	body, _ := json.MarshalIndent(stats, "", "  ")
 	fmt.Fprintln(w, string(body))
@@ -36,7 +40,9 @@ type WorkerStats struct {
 
 // GetStats returns workers stats
 func GetStats() *WorkerStats {
-	stats := getStats()
+	ctx := context.TODO()
+
+	stats := getStats(ctx)
 	enqueued := map[string]string{}
 	if statsEnqueued, ok := stats.Enqueued.(map[string]string); ok {
 		enqueued = statsEnqueued
@@ -50,7 +56,7 @@ func GetStats() *WorkerStats {
 	}
 }
 
-func getStats() stats {
+func getStats(ctx context.Context) stats {
 	jobs := make(map[string][]*map[string]interface{})
 	enqueued := make(map[string]string)
 
@@ -79,45 +85,46 @@ func getStats() stats {
 		0,
 	}
 
-	conn := Config.Pool.Get()
-	defer conn.Close()
+	conn := Config.Client.Instance
 
-	conn.Send("multi")
-	conn.Send("get", Config.Namespace+"stat:processed")
-	conn.Send("get", Config.Namespace+"stat:failed")
-	conn.Send("zcard", Config.Namespace+RETRY_KEY)
+	pipe := conn.TxPipeline()
+	pipe.Get(ctx, Config.Namespace+"stat:processed")
+	pipe.Get(ctx, Config.Namespace+"stat:failed")
+	pipe.ZCard(ctx, Config.Namespace+RETRY_KEY)
 
 	for key := range enqueued {
-		conn.Send("llen", fmt.Sprintf("%squeue:%s", Config.Namespace, key))
+		pipe.LLen(ctx, fmt.Sprintf("%squeue:%s", Config.Namespace, key))
 	}
 
-	r, err := conn.Do("exec")
-
+	results, err := pipe.Exec(ctx)
 	if err != nil {
 		Logger.Errorln("failed to retrieve stats:", err)
 	}
 
-	results := r.([]interface{})
 	if len(results) == (3 + len(enqueued)) {
 		for index, result := range results {
 			if index == 0 && result != nil {
-				stats.Processed, _ = strconv.Atoi(string(result.([]byte)))
+				srtResult := result.(*redis.StringCmd)
+				stats.Processed, _ = strconv.Atoi(srtResult.Val())
 				continue
 			}
 			if index == 1 && result != nil {
-				stats.Failed, _ = strconv.Atoi(string(result.([]byte)))
+				srtResult := result.(*redis.StringCmd)
+				stats.Failed, _ = strconv.Atoi(srtResult.Val())
 				continue
 			}
 
 			if index == 2 && result != nil {
-				stats.Retries = result.(int64)
+				intResult := result.(*redis.IntCmd)
+				stats.Retries = intResult.Val()
 				continue
 			}
 
 			queueIndex := 0
 			for key := range enqueued {
 				if queueIndex == (index - 3) {
-					enqueued[key] = fmt.Sprintf("%d", result.(int64))
+					intResult := result.(*redis.IntCmd)
+					enqueued[key] = fmt.Sprintf("%d", intResult.Val())
 				}
 				queueIndex++
 			}

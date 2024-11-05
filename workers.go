@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -51,6 +52,7 @@ func ResetManagers() error {
 }
 
 func Start() {
+	ctx := context.Background()
 	access.Lock()
 	defer access.Unlock()
 
@@ -59,7 +61,7 @@ func Start() {
 	}
 
 	runHooks(beforeStart)
-	startSchedule()
+	startSchedule(ctx)
 	startManagers()
 
 	started = true
@@ -91,12 +93,12 @@ func StatsServer(port int) {
 	}
 }
 
-func startSchedule() {
+func startSchedule(ctx context.Context) {
 	if schedule == nil {
 		schedule = newScheduled(RETRY_KEY, SCHEDULED_JOBS_KEY)
 	}
 
-	schedule.start()
+	schedule.start(ctx)
 }
 
 func quitSchedule() {

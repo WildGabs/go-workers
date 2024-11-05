@@ -1,29 +1,26 @@
 package workers
 
 import (
-	"fmt"
-	"time"
-
-	"github.com/gomodule/redigo/redis"
+	redis "github.com/topfreegames/extensions/v9/redis/experimental"
 )
 
 type Options struct {
-	Address      string
-	Password     string
+	RedisClient  *redis.Client
+	Namespace    string
 	Database     string
 	ProcessID    string
-	Namespace    string
 	PoolSize     int
 	PoolInterval int
-	DialOptions  []redis.DialOption
+	//DialOptions  []redis.DialOption
 }
 
 type WorkerConfig struct {
 	processId    string
 	Namespace    string
 	PoolInterval int
-	Pool         *redis.Pool
-	Fetch        func(queue string) Fetcher
+	//Pool         *redis.Pool
+	Client *redis.Client
+	Fetch  func(queue string) Fetcher
 }
 
 var Config *WorkerConfig
@@ -31,8 +28,8 @@ var Config *WorkerConfig
 func Configure(options Options) {
 	var namespace string
 
-	if options.Address == "" {
-		panic("Configure requires a 'Address' option, which identifies a Redis instance")
+	if options.RedisClient == nil {
+		panic("Configure requires a 'RedisClient' option, which identifies a Redis instance")
 	}
 	if options.ProcessID == "" {
 		panic("Configure requires a 'ProcessID' option, which uniquely identifies this instance")
@@ -51,42 +48,9 @@ func Configure(options Options) {
 		options.ProcessID,
 		namespace,
 		options.PoolInterval,
-		GetConnectionPool(options),
+		options.RedisClient,
 		func(queue string) Fetcher {
 			return NewFetch(queue, make(chan *Msg), make(chan bool))
-		},
-	}
-}
-
-func GetConnectionPool(options Options) *redis.Pool {
-	return &redis.Pool{
-		MaxIdle:     options.PoolSize,
-		IdleTimeout: 240 * time.Second,
-		Dial: func() (redis.Conn, error) {
-			c, err := redis.Dial("tcp", options.Address, options.DialOptions...)
-			if err != nil {
-				return nil, err
-			}
-			if options.Password != "" {
-				if _, err := c.Do("AUTH", options.Password); err != nil {
-					if errClose := c.Close(); errClose != nil {
-						return nil, fmt.Errorf("%w. failed to close connection: %s", err, errClose.Error())
-					}
-					return nil, err
-				}
-			}
-			if options.Database != "" {
-				if _, err := c.Do("SELECT", options.Database); err != nil {
-					if errClose := c.Close(); errClose != nil {
-						return nil, fmt.Errorf("%w. failed to close connection: %s", err, errClose.Error())
-					}
-				}
-			}
-			return c, err
-		},
-		TestOnBorrow: func(c redis.Conn, t time.Time) error {
-			_, err := c.Do("PING")
-			return err
 		},
 	}
 }

@@ -1,13 +1,13 @@
 package workers
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"github.com/redis/go-redis/v9"
 	"io"
 	"time"
-
-	"github.com/gomodule/redigo/redis"
 )
 
 const (
@@ -63,6 +63,8 @@ func EnqueueAt(queue, class string, at time.Time, args interface{}) (string, err
 
 func EnqueueWithOptions(queue, class string, args interface{}, opts EnqueueOptions) (string, error) {
 	now := nowToSecondsWithNanoPrecision()
+	ctx := context.Background()
+
 	data := EnqueueData{
 		Queue:          queue,
 		Class:          class,
@@ -78,30 +80,19 @@ func EnqueueWithOptions(queue, class string, args interface{}, opts EnqueueOptio
 	}
 
 	if now < opts.At {
-		err := enqueueAt(data.At, bytes)
+		err := enqueueAt(ctx, data.At, bytes)
 		return data.Jid, err
 	}
 
-	var conn redis.Conn
-	if opts.ConnectionOptions.Address == "" {
-		Logger.Debug("missing redis Address in EnqueueWithOptions. using default pool")
-		conn = Config.Pool.Get()
-	} else {
-		conn = GetConnectionPool(opts.ConnectionOptions).Get()
-	}
-	defer func(conn redis.Conn) {
-		err := conn.Close()
-		if err != nil {
-			Logger.Errorf("failed to close Redis connection in EnqueueWithOptions: %w", err)
-		}
-	}(conn)
+	conn := Config.Client.Instance
 
-	_, err = conn.Do("sadd", Config.Namespace+"queues", queue)
+	_, err = conn.SAdd(ctx, Config.Namespace+"queues", queue).Result()
 	if err != nil {
 		return "", err
 	}
+
 	queue = Config.Namespace + "queue:" + queue
-	_, err = conn.Do("lpush", queue, bytes)
+	_, err = conn.LPush(ctx, queue, bytes).Result()
 	if err != nil {
 		return "", err
 	}
@@ -109,14 +100,15 @@ func EnqueueWithOptions(queue, class string, args interface{}, opts EnqueueOptio
 	return data.Jid, nil
 }
 
-func enqueueAt(at float64, bytes []byte) error {
-	conn := Config.Pool.Get()
-	defer conn.Close()
+func enqueueAt(ctx context.Context, at float64, bytes []byte) error {
+	conn := Config.Client.Instance
 
-	_, err := conn.Do(
-		"zadd",
-		Config.Namespace+SCHEDULED_JOBS_KEY, at, bytes,
-	)
+	zItem := redis.Z{
+		Score:  at,
+		Member: bytes,
+	}
+
+	_, err := conn.ZAdd(ctx, Config.Namespace+SCHEDULED_JOBS_KEY, zItem).Result()
 	if err != nil {
 		return err
 	}
