@@ -39,12 +39,10 @@ func (r *myMiddleware) Call(queue string, message *workers.Msg, next func() bool
 
 func main() {
 	workers.Configure(workers.Options{
-		// location of redis instance
-		Address: "localhost:6379",
-		// instance of the database
-		Database: "0",
-		// number of connections to keep open with redis
-		PoolSize: "30",
+		// redis client
+		Client: <redisClient here> ,
+		// seconds between poll attempts
+		PoolInterval: "30",
 		// unique process id for this instance of workers (for proper recovery of inprogress jobs on crash)
 		ProcessID: "1",
 	})

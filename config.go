@@ -7,20 +7,16 @@ import (
 type Options struct {
 	RedisClient  *redis.Client
 	Namespace    string
-	Database     string
 	ProcessID    string
-	PoolSize     int
 	PoolInterval int
-	//DialOptions  []redis.DialOption
 }
 
 type WorkerConfig struct {
 	processId    string
 	Namespace    string
 	PoolInterval int
-	//Pool         *redis.Pool
-	Client *redis.Client
-	Fetch  func(queue string) Fetcher
+	Client       *redis.Client
+	Fetch        func(queue string) Fetcher
 }
 
 var Config *WorkerConfig
@@ -34,14 +30,8 @@ func Configure(options Options) {
 	if options.ProcessID == "" {
 		panic("Configure requires a 'ProcessID' option, which uniquely identifies this instance")
 	}
-	if options.PoolSize <= 0 {
-		options.PoolSize = 1
-	}
 	if options.Namespace != "" {
 		namespace = options.Namespace + ":"
-	}
-	if options.PoolInterval <= 0 {
-		options.PoolInterval = 15
 	}
 
 	Config = &WorkerConfig{
