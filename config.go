@@ -1,11 +1,11 @@
 package workers
 
 import (
-	"github.com/topfreegames/extensions/v9/redis/experimental/interfaces"
+	"github.com/redis/go-redis/v9"
 )
 
 type Options struct {
-	RedisClient  interfaces.UniversalClient
+	RedisClient  redis.UniversalClient
 	Namespace    string
 	ProcessID    string
 	PoolInterval int
@@ -15,7 +15,7 @@ type WorkerConfig struct {
 	processId    string
 	Namespace    string
 	PoolInterval int
-	Client       interfaces.UniversalClient
+	Client       redis.UniversalClient
 	Fetch        func(queue string) Fetcher
 }
 
