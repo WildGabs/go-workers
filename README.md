@@ -1,24 +1,32 @@
-[![Build Status](https://travis-ci.org/jrallison/go-workers.png)](https://travis-ci.org/jrallison/go-workers)
-[![GoDoc](https://godoc.org/github.com/jrallison/go-workers?status.png)](https://godoc.org/github.com/jrallison/go-workers)
+# Go Workers
 
-[Sidekiq](http://sidekiq.org/) compatible
-background workers in [golang](http://golang.org/).
+**Go Workers** provides background worker functionality in Go, compatible with [Sidekiq](http://sidekiq.org/). It allows you to manage reliable background jobs with advanced features such as retries, custom middleware, and concurrency control.
 
-* reliable queueing for all queues using [brpoplpush](http://redis.io/commands/brpoplpush)
-* handles retries
-* support custom middleware
-* customize concurrency per queue
-* responds to Unix signals to safely wait for jobs to finish before exiting.
-* provides stats on what jobs are currently running
-* well tested
+### Features:
+- **Reliable Queueing**: Uses Redis to manage queues, leveraging [BLMOVE](http://redis.io/commands/blmove) for reliable job processing.
+- **Job Retries**: Supports automatic retries for failed jobs.
+- **Custom Middleware**: Allows the use of custom middleware to process jobs.
+- **Concurrency Control**: Customize concurrency per queue.
+- **Graceful Shutdown**: Responds to Unix signals to safely wait for jobs to finish before exiting.
+- **Job Monitoring**: Provides stats on jobs that are currently running.
+- **Well-tested**: Thoroughly tested and reliable.
 
-Example usage:
+Compared to v1.2.1, this version contains braking changes:
+* Redis Client: The code now uses go-redis v9, replacing the previous use of redigo. This expects an updated Redis universal interface. This change promoves enhanced performance and compatibility to cluster mode.
+* Compatible with Redis engine 7.
+* Command Update: The BRPOPLPUSH command has been deprecated in favor of the more modern BLMOVE. BLMOVE is now used for reliable queueing and job processing, replacing BRPOPLPUSH for moving elements between Redis lists with blocking behavior.
+* Removed another redis client requirement for EnqueueOptions. It will always use default client from configuration.
+
+## Example Usage
+
+Here's an example of how to use Go Workers in your Go application:
 
 ```go
 package main
 
 import (
 	"github.com/topfreegames/go-workers"
+	"github.com/redis/go-redis/v9"
 	workers "go-workers"
 )
 
@@ -38,9 +46,25 @@ func (r *myMiddleware) Call(queue string, message *workers.Msg, next func() bool
 }
 
 func main() {
+
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:        "localhost:6379",
+		PoolSize:    10,
+		ReadTimeout: time.Second,
+		
+	})
+
+	// OR Cluster client. You MUST setup a namespace with braces to avoid CROSSLOT errors.
+	//redisClient := redis.NewClusterClient(&redis.Options{
+	//	Addr:        "localhost:6379",
+	//	PoolSize:    1,
+	//	ReadTimeout: time.Second,
+	//  Namespace: "{worker}",
+	//})
+
 	workers.Configure(workers.Options{
 		// redis client
-		Client: <redisClient here> ,
+		RedisClient: redisClient,
 		// seconds between poll attempts
 		PoolInterval: "30",
 		// unique process id for this instance of workers (for proper recovery of inprogress jobs on crash)
@@ -65,12 +89,6 @@ func main() {
 	workers.EnqueueWithOptions("myqueue4", "Add", []int{1, 2},
 		workers.EnqueueOptions{
 			Retry: true,
-			ConnectionOptions: workers.Options{
-				Address:  "localhost:6378",
-				Database: "my-database",
-				PoolSize: 10,
-				Password: "pass",
-			},
 		},
 	)
 
@@ -81,5 +99,3 @@ func main() {
 	workers.Run()
 }
 ```
-
-Initial development sponsored by [Customer.io](http://customer.io)
