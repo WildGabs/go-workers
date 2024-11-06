@@ -21,7 +21,7 @@ func (r *MiddlewareRetry) Call(queue string, message *Msg, next func() bool) (ac
 	defer func() {
 		if e := recover(); e != nil {
 			ctx := context.Background()
-			conn := Config.Client.Instance
+			conn := Config.Client
 			if retry(message) {
 				message.Set("queue", queue)
 				message.Set("error_message", fmt.Sprintf("%v", e))

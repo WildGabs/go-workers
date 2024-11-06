@@ -81,9 +81,9 @@ func (f *fetch) Fetch() {
 }
 
 func (f *fetch) tryFetchMessage(ctx context.Context) {
-	conn := Config.Client.Instance
+	conn := Config.Client
 
-	message, err := conn.BLMove(ctx, f.queue, f.inprogressQueue(), "right", "left", 1).Result()
+	message, err := conn.BLMove(ctx, f.queue, f.inprogressQueue(), "right", "left", 1*time.Second).Result()
 	if err != nil {
 		// If redis returns null, the queue is empty. Just ignore the error.
 		if err.Error() != redis.Nil.Error() {
@@ -108,7 +108,7 @@ func (f *fetch) sendMessage(message string) {
 
 func (f *fetch) Acknowledge(message *Msg) {
 	ctx := context.Background()
-	conn := Config.Client.Instance
+	conn := Config.Client
 
 	conn.LRem(ctx, f.inprogressQueue(), -1, message.OriginalJson())
 }
@@ -140,7 +140,7 @@ func (f *fetch) Closed() bool {
 }
 
 func (f *fetch) inprogressMessages(ctx context.Context) []string {
-	conn := Config.Client.Instance
+	conn := Config.Client
 
 	messages, err := conn.LRange(ctx, f.inprogressQueue(), 0, -1).Result()
 	if err != nil {

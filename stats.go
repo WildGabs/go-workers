@@ -85,7 +85,7 @@ func getStats(ctx context.Context) stats {
 		0,
 	}
 
-	conn := Config.Client.Instance
+	conn := Config.Client
 
 	pipe := conn.TxPipeline()
 	pipe.Get(ctx, Config.Namespace+"stat:processed")

@@ -25,7 +25,7 @@ func (l *MiddlewareStats) Call(queue string, message *Msg, next func() bool) (ac
 }
 
 func incrementStats(ctx context.Context, metric string) {
-	conn := Config.Client.Instance
+	conn := Config.Client
 
 	today := time.Now().UTC().Format("2006-01-02")
 

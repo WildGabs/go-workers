@@ -1,9 +1,12 @@
 package workers
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/customerio/gospec"
+	"github.com/redis/go-redis/v9"
 )
 
 // You will need to list every spec in a TestXxx method like this,
@@ -14,25 +17,33 @@ import (
 
 func TestAllSpecs(t *testing.T) {
 	r := gospec.NewRunner()
+	ctx := context.Background()
 
 	r.Parallel = false
 
-	r.BeforeEach = func() {
-		Configure(Options{
-			Address:   "localhost:6379",
-			ProcessID: "1",
-			Database:  "15",
-			PoolSize:  1,
-		})
+	redisClient := redis.NewClient(&redis.Options{
+		Addr:        "localhost:6379",
+		PoolSize:    1,
+		ReadTimeout: time.Second,
+	})
 
-		conn := Config.Pool.Get()
-		_, err := conn.Do("flushdb")
-		if err != nil {
-			panic("failed to flush db: " + err.Error())
-		}
-		err = conn.Close()
+	defer func() {
+		err := redisClient.Close()
 		if err != nil {
 			panic("failed close connection: " + err.Error())
+		}
+	}()
+
+	r.BeforeEach = func() {
+		Configure(Options{
+			RedisClient: redisClient,
+			ProcessID:   "1",
+		})
+
+		conn := Config.Client
+		_, err := conn.FlushDB(ctx).Result()
+		if err != nil {
+			panic("failed to flush db: " + err.Error())
 		}
 	}
 

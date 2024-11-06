@@ -84,7 +84,7 @@ func EnqueueWithOptions(queue, class string, args interface{}, opts EnqueueOptio
 		return data.Jid, err
 	}
 
-	conn := Config.Client.Instance
+	conn := Config.Client
 
 	_, err = conn.SAdd(ctx, Config.Namespace+"queues", queue).Result()
 	if err != nil {
@@ -101,7 +101,7 @@ func EnqueueWithOptions(queue, class string, args interface{}, opts EnqueueOptio
 }
 
 func enqueueAt(ctx context.Context, at float64, bytes []byte) error {
-	conn := Config.Client.Instance
+	conn := Config.Client
 
 	zItem := redis.Z{
 		Score:  at,

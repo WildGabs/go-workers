@@ -35,7 +35,7 @@ func (s *scheduled) quit() {
 }
 
 func (s *scheduled) poll(ctx context.Context) {
-	conn := Config.Client.Instance
+	conn := Config.Client
 
 	now := nowToSecondsWithNanoPrecision()
 

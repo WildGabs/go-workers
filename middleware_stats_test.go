@@ -1,13 +1,16 @@
 package workers
 
 import (
+	"context"
+	"strconv"
+	"time"
+
 	"github.com/customerio/gospec"
 	. "github.com/customerio/gospec"
-	"github.com/gomodule/redigo/redis"
-	"time"
 )
 
 func MiddlewareStatsSpec(c gospec.Context) {
+	ctx := context.Background()
 	const queueName = "queue-middleware_stats"
 
 	var job = (func(message *Msg) {
@@ -23,19 +26,18 @@ func MiddlewareStatsSpec(c gospec.Context) {
 	Config.Namespace = "prod:"
 
 	c.Specify("increments processed stats", func() {
-		conn := Config.Pool.Get()
-		defer conn.Close()
+		conn := Config.Client
 
-		count, _ := redis.Int(conn.Do("get", "prod:stat:processed"))
-		dayCount, _ := redis.Int(conn.Do("get", "prod:stat:processed:"+time.Now().UTC().Format(layout)))
+		count, _ := strconv.Atoi(conn.Get(ctx, "prod:stat:processed").Val())
+		dayCount, _ := strconv.Atoi(conn.Get(ctx, "prod:stat:processed:"+time.Now().UTC().Format(layout)).Val())
 
 		c.Expect(count, Equals, 0)
 		c.Expect(dayCount, Equals, 0)
 
 		worker.process(message)
 
-		count, _ = redis.Int(conn.Do("get", "prod:stat:processed"))
-		dayCount, _ = redis.Int(conn.Do("get", "prod:stat:processed:"+time.Now().UTC().Format(layout)))
+		count, _ = strconv.Atoi(conn.Get(ctx, "prod:stat:processed").Val())
+		dayCount, _ = strconv.Atoi(conn.Get(ctx, "prod:stat:processed:"+time.Now().UTC().Format(layout)).Val())
 
 		c.Expect(count, Equals, 1)
 		c.Expect(dayCount, Equals, 1)
@@ -50,19 +52,18 @@ func MiddlewareStatsSpec(c gospec.Context) {
 		worker := newWorker(manager)
 
 		c.Specify("increments failed stats", func() {
-			conn := Config.Pool.Get()
-			defer conn.Close()
+			conn := Config.Client
 
-			count, _ := redis.Int(conn.Do("get", "prod:stat:failed"))
-			dayCount, _ := redis.Int(conn.Do("get", "prod:stat:failed:"+time.Now().UTC().Format(layout)))
+			count, _ := strconv.Atoi(conn.Get(ctx, "prod:stat:failed").Val())
+			dayCount, _ := strconv.Atoi(conn.Get(ctx, "prod:stat:failed:"+time.Now().UTC().Format(layout)).Val())
 
 			c.Expect(count, Equals, 0)
 			c.Expect(dayCount, Equals, 0)
 
 			worker.process(message)
 
-			count, _ = redis.Int(conn.Do("get", "prod:stat:failed"))
-			dayCount, _ = redis.Int(conn.Do("get", "prod:stat:failed:"+time.Now().UTC().Format(layout)))
+			count, _ = strconv.Atoi(conn.Get(ctx, "prod:stat:failed").Val())
+			dayCount, _ = strconv.Atoi(conn.Get(ctx, "prod:stat:failed:"+time.Now().UTC().Format(layout)).Val())
 
 			c.Expect(count, Equals, 1)
 			c.Expect(dayCount, Equals, 1)
